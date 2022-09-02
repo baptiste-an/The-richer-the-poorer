@@ -20,10 +20,32 @@ import country_converter as coco
 from matplotlib.patches import ConnectionPatch
 from matplotlib.cm import ScalarMappable
 import matplotlib as mpl
+import os
+import requests
+import pyarrow.feather as feather
 
-# .....path towards your EXIOBASE data folder "IOT_2017_pxp"
+# ...function to download and save data from url......
 
-pathexio = "C:/Users/andrieba/Documents/Data/EXIO3"
+
+def download(url: str, dest_folder: str):
+    if not os.path.exists(dest_folder):
+        os.makedirs(dest_folder)  # create folder if it does not exist
+
+    filename = url.split("/")[-1].replace(" ", "_")  # be careful with file names
+    file_path = os.path.join(dest_folder, filename)
+
+    r = requests.get(url, stream=True)
+    if r.ok:
+        print("saving to", os.path.abspath(file_path))
+        with open(file_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 8):
+                if chunk:
+                    f.write(chunk)
+                    f.flush()
+                    os.fsync(f.fileno())
+    else:  # HTTP status code 4XX/5XX
+        print("Download failed: status code {}\n{}".format(r.status_code, r.text))
+
 
 # ........CREATE FUNCTION TO CONVERT ANY REGION NAME FORMAT TO A COMMON FORMAT................
 
@@ -334,13 +356,13 @@ def Kbar():
     # hypothesis: ratio of GFCF/CFC is same for Taiwan than for China
 
     Z = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/Z.txt",
+        "Data/EXIO3/IOT_2017_pxp/Z.txt",
         delimiter="\t",
         header=[0, 1],
         index_col=[0, 1],
     )  # Z read from exiobase data
 
-    mat15 = scipy.io.loadmat("Semieniuk/Kbar_exio_v3_6_2015pxp")
+    mat15 = scipy.io.loadmat("Data/Sodersten/Kbar_exio_v3_6_2015pxp")
     Kbar15 = pd.DataFrame(mat15["KbarCfc"].toarray(), index=Z.index, columns=Z.columns)
 
     # We calculate coefficients for year 2015 that will be multiplied by CFC for year 2017
@@ -349,7 +371,7 @@ def Kbar():
     ).stack()  # stacked because we need to access CY later
 
     # also load Kbar data from 2014 as CY is an outlier for Kbar2015
-    mat14 = scipy.io.loadmat("Semieniuk/Kbar_exio_v3_6_2014pxp")
+    mat14 = scipy.io.loadmat("Data/Sodersten/Kbar_exio_v3_6_2014pxp")
     Kbar14 = pd.DataFrame(mat14["KbarCfc"].toarray(), index=Z.index, columns=Z.columns)
 
     Kbarcoefs["CY"] = (Kbar14 / Kbar14.sum()).stack()[
@@ -361,7 +383,7 @@ def Kbar():
 
     GFCF_exio = (
         pd.read_csv(
-            pathexio + "/IOT_2017_pxp/Y.txt",
+            "Data/EXIO3/IOT_2017_pxp/Y.txt",
             delimiter="\t",
             header=[0, 1],
             index_col=[0, 1],
@@ -370,7 +392,7 @@ def Kbar():
         .sum()
     )  # aggregated 49 regions, 1 product
     CFC_exio = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/satellite/F.txt",
+        "Data/EXIO3/IOT_2017_pxp/satellite/F.txt",
         delimiter="\t",
         header=[0, 1],
         index_col=[0],
@@ -389,7 +411,12 @@ def Kbar():
         .stack()
     )
 
-    Kbarcoefs.mul(CFC_rescaled, axis=1).to_csv("Results/Kbar_2017pxp.txt")
+    feather.write_feather(Z, "Data/EXIO3/IOT_2017_pxp/Z.feather")
+    # files .txt take too long to read, feather files save time for functions Y_all() and Lk()
+
+    feather.write_feather(
+        Kbarcoefs.mul(CFC_rescaled, axis=1), "Results/Kbar_2017pxp.feather"
+    )
 
 
 # ........CREATE FUNCTION TO AGGREGATE A DATAFRAME FROM GIVEN CONCORDANCE TABLE................
@@ -463,16 +490,11 @@ def Y_all():
     None
     """
 
-    Z = pd.read_csv(
-        pathexio
-        + "/IOT_2017_pxp/Z.txt",  # we only use it to access the index and columns
-        delimiter="\t",
-        header=[0, 1],
-        index_col=[0, 1],
-    )
-    # in order to get index and columns for Kbar
+    Z = feather.read_feather(
+        "Data/EXIO3/IOT_2017_pxp/Z.feather"
+    )  # we only use it to access the index and columnsin order to get index and columns for Kbar
 
-    pathIOT = pathexio + "/IOT_2017_pxp/"
+    pathIOT = "Data/EXIO3/IOT_2017_pxp/"
     Y = pd.read_csv(
         pathIOT + "Y.txt",
         delimiter="\t",
@@ -515,11 +537,7 @@ def Y_all():
         .sum()
     )
 
-    Kbar = pd.read_csv(
-        "Results/Kbar_2017pxp.txt",
-        header=[0, 1],
-        index_col=[0, 1],
-    )
+    Kbar = feather.read_feather("Results/Kbar_2017pxp.feather")
     Kbar = pd.DataFrame(Kbar, index=Z.index, columns=Z.columns).fillna(0)
 
     # residual Y (net formation of capital)
@@ -527,12 +545,12 @@ def Y_all():
 
     Ygfcf = Y.swaplevel(axis=1)["Gross fixed capital formation"]
 
-    Ytot.to_csv("Results/Ytot.txt")
-    Yh.to_csv("Results/Yh.txt")
-    Yg.to_csv("Results/Yg.txt")
-    Yr.to_csv("Results/Yr.txt")
-    Yother.to_csv("Results/Yother.txt")
-    Ygfcf.to_csv("Results/Ygfcf.txt")
+    feather.write_feather(Ytot, "Results/Ytot.feather")
+    feather.write_feather(Yh, "Results/Yh.feather")
+    feather.write_feather(Yg, "Results/Yg.feather")
+    feather.write_feather(Yr, "Results/Yr.feather")
+    feather.write_feather(Yother, "Results/Yother.feather")
+    feather.write_feather(Ygfcf, "Results/Ygfcf.feather")
 
     return "All Y files were saved in Results"
 
@@ -552,7 +570,7 @@ def Lk():
 
     Y = (
         pd.read_csv(
-            pathexio + "/IOT_2017_pxp/Y.txt",
+            "Data/EXIO3/IOT_2017_pxp/Y.txt",
             delimiter="\t",
             header=[0, 1],
             index_col=[0, 1],
@@ -561,24 +579,18 @@ def Lk():
         .sum()
     )
 
-    Z = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/Z.txt",
-        delimiter="\t",
-        header=[0, 1],
-        index_col=[0, 1],
-    )
+    Z = feather.read_feather("Data/EXIO3/IOT_2017_pxp/Z.feather")
 
-    Kbar = pd.read_csv(
-        "Results/Kbar_2017pxp.txt",
-        header=[0, 1],
-        index_col=[0, 1],
-    )
+    Kbar = feather.read_feather("Results/Kbar_2017pxp.feather")
     Kbar = pd.DataFrame(Kbar, index=Z.index, columns=Z.columns).fillna(0)
 
     Zk = Z + Kbar
     x = Z.sum(axis=1) + Y.sum(axis=1)
     Ak = pymrio.calc_A(Zk, x)
-    pymrio.calc_L(Ak).to_csv("Results/Lk2017.txt")
+    A = pymrio.calc_A(Z, x)
+
+    feather.write_feather(pymrio.calc_L(Ak), "Results/Lk.feather")
+    feather.write_feather(pymrio.calc_L(A), "Data/EXIO3/IOT_2017_pxp/L.feather")
 
     return "Lk saved in Results"
 
@@ -600,20 +612,16 @@ def LY():
     )
     conc.index.names = ["sector cons"]
 
-    Yh = pd.read_csv("Results/Yh.txt", index_col=[0, 1])
-    Yg = pd.read_csv("Results/Yg.txt", index_col=[0, 1])
-    Yr = pd.read_csv("Results/Yr.txt", index_col=[0, 1])
-    Ygfcf = pd.read_csv("Results/Ygfcf.txt", index_col=[0, 1])
-    Yother = pd.read_csv("Results/Yother.txt", index_col=[0, 1])
+    Yh = feather.read_feather("Results/Yh.feather")
+    Yg = feather.read_feather("Results/Yg.feather")
+    Yr = feather.read_feather("Results/Yr.feather")
+    Ygfcf = feather.read_feather("Results/Ygfcf.feather")
+    Yother = feather.read_feather("Results/Yother.feather")
 
-    L = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/L.txt", delimiter=",", header=[0, 1], index_col=[0, 1]
-    )
+    L = feather.read_feather("Data/EXIO3/IOT_2017_pxp/L.feather")
     L.columns.names = ["region cons", "sector cons"]
     L.index.names = ["region prod", "sector prod"]
-    Lk = pd.read_csv(
-        "Results/Lk2017.txt", delimiter=",", header=[0, 1], index_col=[0, 1]
-    )
+    Lk = feather.read_feather("Results/Lk.feather")
     Lk.columns.names = ["region cons", "sector cons"]
     Lk.index.names = ["region prod", "sector prod"]
 
@@ -663,11 +671,11 @@ def LY():
     LY_gfcf = pd.concat([LYgfcf.stack(), LkYr.stack()], axis=1, keys=["LYgfcf", "LkYr"])
 
     LY = pd.concat(
-        [[LY_all.unstack(level="sector cons"), LY_gfcf.unstack(level="sector cons")]],
+        [LY_all.unstack(level="sector cons"), LY_gfcf.unstack(level="sector cons")],
         axis=1,
     )
 
-    LY.stack().to_csv("Results/LY.txt")
+    feather.write_feather(LY.stack(), "Results/LY.feather")
 
     return "LYh, LkYh, LYg etc. were saved in Results"
 
@@ -696,25 +704,39 @@ def SLY():
     )
     conc_sec_prod.index.names = ["sector prod"]
 
-    LY = (
-        pd.read_csv(
-            "Results/LY.txt",
-            index_col=[0, 1, 2, 3],
-            header=0,
-        )
-        .unstack()
-        .unstack()
-    )
+    LY = feather.read_feather("Results/LY.feather").unstack().unstack()
     LY.columns.names = ["LY name", "sector cons", "region cons"]
     LY.index.names = ["region prod", "sector prod"]
 
     S = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/satellite/S.txt",
+        "Data/EXIO3/IOT_2017_pxp/satellite/S.txt",
         delimiter="\t",
         header=[0, 1],
         index_col=[0],
     )
     S.columns.names = ["region prod", "sector prod"]
+
+    S_imp = pd.read_csv(
+        "Data/EXIO3/IOT_2017_pxp/impacts/S.txt",
+        delimiter="\t",
+        header=[0, 1],
+        index_col=[0],
+    )
+    S_imp.columns.names = ["region prod", "sector prod"]
+
+    SLY["GHG"] = (
+        agg(
+            LY.mul(
+                S_imp.loc[
+                    "GHG emissions (GWP100) | Problem oriented approach: baseline (CML, 2001) | GWP100 (IPCC, 2007)"
+                ],
+                axis=0,
+            ),
+            conc_sec_prod,
+        )
+        .unstack()
+        .unstack()
+    )
 
     SLY["Energy Carrier Net Total"] = (
         agg(LY.mul(S.loc["Energy Carrier Net Total"], axis=0), conc_sec_prod)
@@ -728,7 +750,7 @@ def SLY():
     )
 
     SLY.columns.names = ["Extensions"]
-    SLY.to_csv("Results/SLY.txt")
+    feather.write_feather(SLY, "Results/SLY.feather")
 
     return "SLYh, SLkYh, etc. were saved in Results"
 
@@ -817,7 +839,7 @@ def ppp_calculations():
     XReuros = pd.read_excel("OECD/exchange rates euro area.xlsx").loc[0]
 
     # read EXIOBASE data
-    pathIOT = pathexio + "/IOT_2017_pxp/"
+    pathIOT = "Data/EXIO3/IOT_2017_pxp/"
     Y = pd.read_csv(
         pathIOT + "Y.txt",
         delimiter="\t",
@@ -872,22 +894,33 @@ def ppp_calculations():
     real_gdp_cap = real_agg["1000000:GROSS DOMESTIC PRODUCT"] / pop_agg * 1000000000
     fc_cap = Y_real.drop(sect_cap).sum() / pop_agg * 1000000
 
-    return real_gdp_cap, real_agg, pop_agg, Y_real, fc_cap
+    return (
+        real_gdp_cap,
+        real_agg,
+        pop_agg,
+        Y_real,
+        fc_cap,
+        index,
+        Yh_dollars,
+        Yg_dollars,
+        Yh,
+        Yg,
+    )
 
 
-real_gdp_cap, ICP_data_real, pop_agg, Y_real, fc_cap = ppp_calculations()
 # real_gdp_cap is the GDP for 49 regions in US$ppp
 # ICP_data_real is the raw ICP data aggregated into 49 regions
 # pop_agg is the population aggregated into 49 regions
 # Y_real is the final consumption of households and governemnts (12 sectors) plus GFCF (3 sectors) for 49 regions in US$2017ppp
 # fc_cap is the final consumption per capita in US$2017ppp/cap
 
+
 # .........ENERGY INTENSITIES.............
 
 
 # calculate all the energy vectors used to calculate energy intensities
 def energy():
-    SLY = pd.read_csv("Results/SLY.txt", index_col=[0, 1, 2, 3, 4])
+    SLY = feather.read_feather("Results/SLY.feather")
     SLY_pri = SLY["Energy Carrier Net Total"].unstack(level=0)
     SLY_fin = (
         SLY["Energy Carrier Net Total"] - SLY["Energy Carrier Net LOSS"]
@@ -908,7 +941,7 @@ def energy():
     ).drop(sect_cap)
 
     F_hh = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/satellite/F_hh.txt",
+        "Data/EXIO3/IOT_2017_pxp/satellite/F_Y.txt",
         delimiter="\t",
         header=[0, 1],
         index_col=[0],
@@ -922,7 +955,7 @@ def energy():
     )
 
     D_pba = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/satellite/D_pba.txt",
+        "Data/EXIO3/IOT_2017_pxp/satellite/D_pba.txt",
         delimiter="\t",
         header=[0, 1],
         index_col=[0],
@@ -936,7 +969,7 @@ def energy():
     )
 
     D_cba = pd.read_csv(
-        pathexio + "/IOT_2017_pxp/satellite/D_cba.txt",
+        "Data/EXIO3/IOT_2017_pxp/satellite/D_cba.txt",
         delimiter="\t",
         header=[0, 1],
         index_col=[0],
@@ -961,22 +994,11 @@ def energy():
     )
 
 
-(
-    E_K_fc_fin,
-    E_K_fc_pri,
-    E_hhfin,
-    E_hhpri,
-    E_pbafin,
-    E_pbapri,
-    E_cbafin,
-    E_cbapri,
-) = energy()
-
 # ..................VALIDATION......................
 
 # check that the energy footprint is the same with and without capital endogenized
 def validation():
-    SLY = pd.read_csv("Results/SLY.txt", index_col=[0, 1, 2, 3, 4])
+    SLY = feather.read_feather("Results/SLY.feather")
     a = (
         SLY.sum(axis=1)
         .unstack(level="LY name")[["LYg", "LYgfcf", "LYh", "LYother"]]
@@ -1052,8 +1074,10 @@ def data_figure1():
     ).T.to_excel("Figures/figure1.xlsx")
 
 
-def data_figure2():
-    SLY = pd.read_csv("Results/SLY.txt", index_col=[0, 1, 2, 3, 4])
+def data_figure2(
+    E_hhfin, pop_agg, E_K_fc_fin, E_pbafin, E_cbafin, real_gdp_cap, fc_cap
+):
+    SLY = feather.read_feather("Results/SLY.feather")
     SLY_fin = (
         SLY["Energy Carrier Net Total"] - SLY["Energy Carrier Net LOSS"]
     ).unstack(level=0)
@@ -1090,7 +1114,7 @@ def data_figure2():
     ).to_excel("Figures/figure2.xlsx")
 
 
-def data_figure3():
+def data_figure3(real_gdp_cap, E_hhfin, pop_agg, E_cbafin):
 
     x = np.log(real_gdp_cap)
     y = np.log(E_hhfin / pop_agg * 1000)
@@ -1125,7 +1149,7 @@ def data_figure3():
         ).to_excel(writer, sheet_name="Fig. 3b regression")
 
 
-def data_figure4():
+def data_figure4(real_gdp_cap, E_pbafin, E_hhfin, ICP_data_real, E_K_fc_fin, Y_real):
     x = real_gdp_cap / 1000
     y = (E_pbafin + E_hhfin) / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"] / 1000
     pd.concat(
@@ -1230,7 +1254,7 @@ def data_figure4():
         ).to_excel(writer, sheet_name="elasticity E_pba")
 
 
-def data_figure5():
+def data_figure5(E_K_fc_fin, Y_real, real_gdp_cap):
     I_K_fc = E_K_fc_fin.T.div(Y_real.T.drop(sect_cap, axis=1))
     I_K_fc_world = E_K_fc_fin.sum(axis=1) / Y_real.T.drop(sect_cap, axis=1).sum()
     x = real_gdp_cap / 1000
@@ -1254,7 +1278,7 @@ def data_figure5():
         x.to_excel(writer, sheet_name="real gdp cap")
 
 
-def data_figure6():
+def data_figure6(Y_real, real_gdp_cap):
     sect_shares = Y_real.drop(sect_cap).div(Y_real.drop(sect_cap).sum(), axis=1).T
     x = (real_gdp_cap) / 1000
     regression_results = pd.DataFrame(
@@ -1274,7 +1298,7 @@ def data_figure6():
         regression_results.to_excel(writer, sheet_name="regression_results")
 
 
-def data_figure7():
+def data_figure7(real_gdp_cap, E_K_fc_fin, Y_real, E_hhfin, pop_agg):
 
     x = real_gdp_cap
     y = E_K_fc_fin.sum() / Y_real.T.drop(sect_cap, axis=1).sum(axis=1)
@@ -1294,7 +1318,7 @@ def data_figure7():
     ).sort_values(by="real_gdp_cap").to_excel("Figures/figure7.xlsx")
 
 
-def data_figure8():
+def data_figure8(real_gdp_cap, E_K_fc_fin, Y_real, E_hhfin, pop_agg):
 
     long_exio_regions = dict(
         {
@@ -1367,7 +1391,7 @@ def data_figure8():
     data.rename(index=long_exio_regions).to_excel("Figures/figure8.xlsx")
 
 
-def data_table1():
+def data_table1(E_K_fc_fin, Y_real, real_gdp_cap):
     I_K_fc = E_K_fc_fin.T.div(Y_real.T.drop(sect_cap, axis=1))
     I_K_fc_world = E_K_fc_fin.sum(axis=1) / Y_real.T.drop(sect_cap, axis=1).sum()
     I_K_fc_world_total = (
@@ -1438,12 +1462,164 @@ def data_table1():
     df.to_excel("Figures/tab1.xlsx")
 
 
-data_figure1()
-data_figure2()
-data_figure3()
-data_figure4()
-data_figure5()
-data_figure6()
-data_figure7()
-data_figure8()
-data_table1()
+# .....sub sector calculations.........
+
+# this function calculates, for each sub-sector of the 12 CPI sectors,
+# the regression of a sub sector's share of expenditures in the CPI sector total as a function of GDP
+# it saves an excel with the coefficients of regressions and the shares
+def supplementary_data_theta(real_gdp_cap, index, Yh_dollars, Yg_dollars):
+    conc = pd.read_excel(
+        "concordance.xlsx", sheet_name="final consumption", index_col=0
+    )
+    sector_dict = dict(
+        {
+            "1101000:FOOD AND NON-ALCOHOLIC BEVERAGES": "CPI: 01 - Food and non-Alcoholic beverages",
+            "1102000:ALCOHOLIC BEVERAGES, TOBACCO AND NARCOTICS": "CPI: 02 - Alcoholic beverages, tobacco and narcotics",
+            "1103000:CLOTHING AND FOOTWEAR": "CPI: 03 - Clothing and footwear",
+            "9060000:ACTUAL HOUSING, WATER, ELECTRICITY, GAS AND OTHER FUELS": "CPI: 04 - Housing, water, electricity, gas and other fuels",
+            "1105000:FURNISHINGS, HOUSEHOLD EQUIPMENT AND ROUTINE HOUSEHOLD MAINTENANCE": "CPI: 05 - Furnishings, household equipment and routine household maintenance",
+            "9080000:ACTUAL HEALTH": "CPI: 06 - Health",
+            "1107000:TRANSPORT": "CPI: 07 - Transport",
+            "1108000:COMMUNICATION": "CPI: 08 - Communication",
+            "9110000:ACTUAL RECREATION AND CULTURE": "CPI: 09 - Recreation and culture",
+            "9120000:ACTUAL EDUCATION": "CPI: 10 - Education",
+            "1111000:RESTAURANTS AND HOTELS": "CPI: 11 - Restaurants and hotels",
+            "9140000:ACTUAL MISCELLANEOUS GOODS AND SERVICES": "CPI: 12 - Miscellaneous goods and services",
+            "9270000:GENERAL GOVERNMENT FINAL CONSUMPTION EXPENDITURE": "Final Consumption",
+            "1501100:MACHINERY AND EQUIPMENT": "150100:MACHINERY AND EQUIPMENT",
+            "1501200:CONSTRUCTION": "150200:CONSTRUCTION",
+            "1501300:OTHER PRODUCTS": "150300:OTHER PRODUCTS",
+        }
+    )
+
+    x = real_gdp_cap / 1000
+    results = pd.DataFrame()
+    shares = pd.DataFrame()
+
+    for sect in conc.columns:
+        regression_results = pd.DataFrame(
+            [], index=["slope", "intercept", "rvalue", "pvalue", "stderr"]
+        )
+        df = (
+            (Yh_dollars + Yg_dollars)
+            .groupby(level="sector")
+            .sum()
+            .mul(conc[sect], axis=0)
+            .div(index.rename(sector_dict)[sect], axis=1)
+            .dropna()
+        )
+        df = df.loc[(df != 0).any(1)]
+        share = pd.DataFrame()
+        share[sect] = df.sum(axis=1) / df.sum().sum()
+        df = df.div(df.sum(), axis=1)
+        for sector in df.index:
+            y = df.loc[sector]
+            x2 = (x * y / y).dropna()
+            y = (y * y / y).dropna()
+            regression = scipy.stats.linregress(x2, y)
+            regression_results[sector] = list(regression)
+        regression_results.loc["R2"] = (
+            regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
+        )
+        regression_results2 = pd.DataFrame()
+        regression_results2[sect] = regression_results.stack()
+
+        results = pd.concat([results, regression_results2.unstack()], axis=1)
+        shares = pd.concat([shares, share], axis=0)
+
+    results.loc["shares (%)"] = shares.unstack().dropna() * 100
+
+    results.loc[["R2", "shares (%)"]].T.loc[results.loc["R2"] > 0.2].round(2).to_excel(
+        "Figures/supplementary_data_theta.xlsx", sheet_name="R2>0.2"
+    )
+    with pd.ExcelWriter("Figures/supplementary_data_theta.xlsx", mode="a") as writer:
+        results.to_excel(writer, sheet_name="all sectors")
+
+
+# this function calculates, for each sub-sector of the 12 CPI sectors,
+# the regression of a sub sector's senergy intensity as a function of GDP
+# it saves an excel with the coefficients of regressions and the shares
+def supplementary_data_I(real_gdp_cap, index, Yh_dollars, Yg_dollars, Yh, Yg):
+    conc = pd.read_excel(
+        "concordance.xlsx", sheet_name="final consumption", index_col=0
+    )
+    sector_dict = dict(
+        {
+            "1101000:FOOD AND NON-ALCOHOLIC BEVERAGES": "CPI: 01 - Food and non-Alcoholic beverages",
+            "1102000:ALCOHOLIC BEVERAGES, TOBACCO AND NARCOTICS": "CPI: 02 - Alcoholic beverages, tobacco and narcotics",
+            "1103000:CLOTHING AND FOOTWEAR": "CPI: 03 - Clothing and footwear",
+            "9060000:ACTUAL HOUSING, WATER, ELECTRICITY, GAS AND OTHER FUELS": "CPI: 04 - Housing, water, electricity, gas and other fuels",
+            "1105000:FURNISHINGS, HOUSEHOLD EQUIPMENT AND ROUTINE HOUSEHOLD MAINTENANCE": "CPI: 05 - Furnishings, household equipment and routine household maintenance",
+            "9080000:ACTUAL HEALTH": "CPI: 06 - Health",
+            "1107000:TRANSPORT": "CPI: 07 - Transport",
+            "1108000:COMMUNICATION": "CPI: 08 - Communication",
+            "9110000:ACTUAL RECREATION AND CULTURE": "CPI: 09 - Recreation and culture",
+            "9120000:ACTUAL EDUCATION": "CPI: 10 - Education",
+            "1111000:RESTAURANTS AND HOTELS": "CPI: 11 - Restaurants and hotels",
+            "9140000:ACTUAL MISCELLANEOUS GOODS AND SERVICES": "CPI: 12 - Miscellaneous goods and services",
+            "9270000:GENERAL GOVERNMENT FINAL CONSUMPTION EXPENDITURE": "Final Consumption",
+            "1501100:MACHINERY AND EQUIPMENT": "150100:MACHINERY AND EQUIPMENT",
+            "1501200:CONSTRUCTION": "150200:CONSTRUCTION",
+            "1501300:OTHER PRODUCTS": "150300:OTHER PRODUCTS",
+        }
+    )
+    x = real_gdp_cap / 1000
+    results = pd.DataFrame()
+    shares = pd.DataFrame()
+
+    Lk = feather.read_feather("Results/Lk.feather")
+    S = pd.read_csv(
+        "Data/EXIO3/IOT_2017_pxp/satellite/S.txt",
+        delimiter="\t",
+        header=[0, 1],
+        index_col=[0],
+    )
+
+    for sect in conc.columns:
+        regression_results = pd.DataFrame(
+            [], index=["slope", "intercept", "rvalue", "pvalue", "stderr"]
+        )
+        df = (
+            (Yh_dollars + Yg_dollars)
+            .groupby(level="sector")
+            .sum()
+            .mul(conc[sect], axis=0)
+            .div(index.rename(sector_dict)[sect], axis=1)
+        )
+
+        df2 = df.loc[(df != 0).any(1)]
+        share = pd.DataFrame()
+        share[sect] = df2.sum(axis=1) / df2.sum().sum()
+
+        SL = Lk.mul(
+            S.loc["Energy Carrier Net Total"] - S.loc["Energy Carrier Net LOSS"], axis=0
+        ).sum()
+        MJ = SL.unstack().T.mul(
+            (Yh + Yg).groupby(level="sector").sum().mul(conc[sect], axis=0)
+        )
+        I = MJ / df  # .dropna()
+        I = I.loc[(I != 0).any(1)]
+
+        for sector in I.index:
+            y = I.loc[sector]
+            x2 = (x * y / y).dropna()
+            y = (y * y / y).dropna()
+            if x2.size != 0:
+                regression = scipy.stats.linregress(x2, y)
+                regression_results[sector] = list(regression)
+        regression_results.loc["R2"] = (
+            regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
+        )
+        regression_results2 = pd.DataFrame()
+        regression_results2[sect] = regression_results.stack()
+
+        results = pd.concat([results, regression_results2.unstack()], axis=1)
+        shares = pd.concat([shares, share], axis=0)
+
+    results.loc["shares (%)"] = shares.unstack().dropna() * 100
+
+    results.loc[["R2", "shares (%)"]].T.loc[results.loc["R2"] > 0.2].round(2).to_excel(
+        "Figures/supplementary_data_I.xlsx", sheet_name="R2>0.2"
+    )
+    with pd.ExcelWriter("Figures/supplementary_data_I.xlsx", mode="a") as writer:
+        results.to_excel(writer, sheet_name="all sectors")
