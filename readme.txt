@@ -1,4 +1,4 @@
-To reproduce the study, please run the run.py script. 
+To reproduce the study, run the run.py script. 
 
 It will:
 
