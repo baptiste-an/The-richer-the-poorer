@@ -1,34 +1,32 @@
 from functions import *
 import zipfile
 
-# download(
-#     "https://zenodo.org/record/3874309/files/Kbar_exio_v3_6_2014pxp.mat",
-#     dest_folder="Data/Sodersten",
-# )
-# download(
-#     "https://zenodo.org/record/3874309/files/Kbar_exio_v3_6_2015pxp.mat",
-#     dest_folder="Data/Sodersten",
-# )
-# download(
-#     "https://zenodo.org/record/5589597/files/IOT_2017_pxp.zip", dest_folder="Data/EXIO3"
-# )
-# with zipfile.ZipFile("Data/EXIO3/IOT_2017_pxp.zip", "r") as zip_ref:
-#     zip_ref.extractall("Data/EXIO3")
+download(
+    "https://zenodo.org/record/3874309/files/Kbar_exio_v3_6_2014pxp.mat",
+    dest_folder="Data/Sodersten",
+)
+download(
+    "https://zenodo.org/record/3874309/files/Kbar_exio_v3_6_2015pxp.mat",
+    dest_folder="Data/Sodersten",
+)
+download("https://zenodo.org/record/5589597/files/IOT_2017_pxp.zip", dest_folder="Data/EXIO3")
+with zipfile.ZipFile("Data/EXIO3/IOT_2017_pxp.zip", "r") as zip_ref:
+    zip_ref.extractall("Data/EXIO3")
 
 
 # ........CREATE KBAR MATRIX FOR YEAR 2017................
 
-# Kbar()
+Kbar()
 
 # # .........CALCULATIONS......................................
 
-# Y_all()  # function to diaggregate GDP into all the formats needed
+Y_all()  # function to diaggregate GDP into all the formats needed
 
-# Lk()  # function to calculate Lk from Z and Kbar
+Lk()  # function to calculate Lk from Z and Kbar
 
-# LY()  # function to calculate output associated with L and Lk for each component of Y
+LY()  # function to calculate output associated with L and Lk for each component of Y
 
-# SLY()  # associates energy extensions to LY
+SLY()  # associates energy extensions to LY
 
 # ..............ICP CALCULATION..............
 

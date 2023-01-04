@@ -57,9 +57,7 @@ for i in [
     n for n in cc.valid_class if n != "name_short"
 ]:  # we convert all the regions in cc to name short and add it to the dict
     dict_regions.update(cc.get_correspondence_dict(i, "name_short"))
-name_short = cc.ISO3as("name_short")[
-    "name_short"
-].values  # array containing all region names in short_name format
+name_short = cc.ISO3as("name_short")["name_short"].values  # array containing all region names in short_name format
 
 
 def dict_regions_update():
@@ -115,9 +113,7 @@ def dict_regions_update():
     dict_regions["Saint Helena"] = "St. Helena"
     dict_regions["China, Hong Kong SAR"] = "Hong Kong"
     dict_regions["China, Macao SAR"] = "Macau"
-    dict_regions[
-        "Bonaire, Sint Eustatius and Saba"
-    ] = "Bonaire, Saint Eustatius and Saba"
+    dict_regions["Bonaire, Sint Eustatius and Saba"] = "Bonaire, Saint Eustatius and Saba"
     dict_regions["Curaçao"] = "Curacao"
     dict_regions["Saint Barthélemy"] = "St. Barths"
     dict_regions["Saint Martin (French part)"] = "Saint-Martin"
@@ -314,42 +310,24 @@ def Kbar():
     -------
     None
     """
-    CFC_WB = pd.read_excel("World Bank/CFC worldbank.xlsx", header=3, index_col=[0])[
-        "2017"
-    ]
+    CFC_WB = pd.read_excel("World Bank/CFC worldbank.xlsx", header=3, index_col=[0])["2017"]
 
-    GFCF_WB = pd.read_excel("World Bank/GFCF worldbank.xlsx", header=3, index_col=[0])[
-        "2017"
-    ]
+    GFCF_WB = pd.read_excel("World Bank/GFCF worldbank.xlsx", header=3, index_col=[0])["2017"]
 
     # we want to set to NaN values for regions that don't have both CFC and GFCF data
-    CFC_WB = (
-        CFC_WB * GFCF_WB / GFCF_WB
-    )  # in case some countries have data for CFC but not GFCF
+    CFC_WB = CFC_WB * GFCF_WB / GFCF_WB  # in case some countries have data for CFC but not GFCF
     GFCF_WB = GFCF_WB * CFC_WB / CFC_WB
 
     CFC_WB = rename_region(CFC_WB, "Country Name").drop("Z - Aggregated categories")
     # rename the regions to a common format
     CFC_WB["region"] = cc.convert(names=CFC_WB.index, to="EXIO3")
     # convert the common format to EXIOBASE format
-    CFC_WB = (
-        CFC_WB.reset_index()
-        .set_index("region")
-        .drop("Country Name", axis=1)
-        .groupby(level="region")
-        .sum()
-    )
+    CFC_WB = CFC_WB.reset_index().set_index("region").drop("Country Name", axis=1).groupby(level="region").sum()
     # define EXIOBASE regions as index
 
     GFCF_WB = rename_region(GFCF_WB, "Country Name").drop("Z - Aggregated categories")
     GFCF_WB["region"] = cc.convert(names=GFCF_WB.index, to="EXIO3")
-    GFCF_WB = (
-        GFCF_WB.reset_index()
-        .set_index("region")
-        .drop("Country Name", axis=1)
-        .groupby(level="region")
-        .sum()
-    )
+    GFCF_WB = GFCF_WB.reset_index().set_index("region").drop("Country Name", axis=1).groupby(level="region").sum()
 
     GFCF_over_CFC_WB = GFCF_WB["2017"] / CFC_WB["2017"]
     GFCF_over_CFC_WB.loc["TW"] = GFCF_over_CFC_WB.loc["CN"]
@@ -361,25 +339,17 @@ def Kbar():
         header=[0, 1],
         index_col=[0, 1],
     )  # Z read from exiobase data
+    Zcoefs = Z.div(Z.sum(axis=1), axis=0)
 
     mat15 = scipy.io.loadmat("Data/Sodersten/Kbar_exio_v3_6_2015pxp")
     Kbar15 = pd.DataFrame(mat15["KbarCfc"].toarray(), index=Z.index, columns=Z.columns)
 
     # We calculate coefficients for year 2015 that will be multiplied by CFC for year 2017
-    Kbarcoefs = (
-        Kbar15 / Kbar15.sum()
-    ).stack()  # stacked because we need to access CY later
+    Kbarcoefs = Kbar15.div(Kbar15.sum(axis=1), axis=0)  # the sum of the lines = CFC
 
-    # also load Kbar data from 2014 as CY is an outlier for Kbar2015
-    mat14 = scipy.io.loadmat("Data/Sodersten/Kbar_exio_v3_6_2014pxp")
-    Kbar14 = pd.DataFrame(mat14["KbarCfc"].toarray(), index=Z.index, columns=Z.columns)
-
-    Kbarcoefs["CY"] = (Kbar14 / Kbar14.sum()).stack()[
-        "CY"
-    ]  # because wrong data for CY in Kbar15
-    Kbarcoefs = pd.DataFrame(
-        Kbarcoefs.unstack(), index=Kbar15.index, columns=Kbar15.columns
-    )
+    Kbarcoefs = Kbarcoefs.combine_first(Zcoefs).combine_first(
+        pd.DataFrame(np.identity(9800), index=Z.index, columns=Z.columns)
+    )  # if some coefs don't exist in Kbar15, we use those of Z
 
     GFCF_exio = (
         pd.read_csv(
@@ -399,9 +369,7 @@ def Kbar():
     ).loc[
         "Operating surplus: Consumption of fixed capital"
     ]  # 49 regions 200 sectors
-    GFCF_over_CFC_exio = GFCF_exio / CFC_exio.unstack().sum(
-        axis=1
-    )  # 49 regions 1 sector
+    GFCF_over_CFC_exio = GFCF_exio / CFC_exio.unstack().sum(axis=1)  # 49 regions 1 sector
 
     # we rescale CFC in order to obtain ratio GFCF/CFC of the worldbank when all sectors are aggregated
     CFC_rescaled = (
@@ -414,9 +382,7 @@ def Kbar():
     feather.write_feather(Z, "Data/EXIO3/IOT_2017_pxp/Z.feather")
     # files .txt take too long to read, feather files save time for functions Y_all() and Lk()
 
-    feather.write_feather(
-        Kbarcoefs.mul(CFC_rescaled, axis=1), "Results/Kbar_2017pxp.feather"
-    )
+    feather.write_feather(Kbarcoefs.mul(CFC_rescaled, axis=0), "Results/Kbar_2017pxp.feather")
 
 
 # ........CREATE FUNCTION TO AGGREGATE A DATAFRAME FROM GIVEN CONCORDANCE TABLE................
@@ -444,15 +410,9 @@ def agg(df: pd.DataFrame, table: pd.DataFrame, axis=0) -> pd.DataFrame:
     """
     if isinstance(table.index, pd.MultiIndex):
         if axis == 0:
-            df_agg = (
-                df.rename(index=dict(table.index)).groupby(level=df.index.names).sum()
-            )
+            df_agg = df.rename(index=dict(table.index)).groupby(level=df.index.names).sum()
         else:
-            df_agg = (
-                df.rename(columns=dict(table.index))
-                .groupby(level=df.columns.names, axis=1)
-                .sum()
-            )
+            df_agg = df.rename(columns=dict(table.index)).groupby(level=df.columns.names, axis=1).sum()
         return df_agg
 
     else:
@@ -518,11 +478,7 @@ def Y_all():
     )
 
     # government final consumption
-    Yg = (
-        Y.swaplevel(axis=1)["Final consumption expenditure by government"]
-        .groupby(level="region", axis=1)
-        .sum()
-    )
+    Yg = Y.swaplevel(axis=1)["Final consumption expenditure by government"].groupby(level="region", axis=1).sum()
 
     # other components of GDP
     Yother = (
@@ -540,8 +496,41 @@ def Y_all():
     Kbar = feather.read_feather("Results/Kbar_2017pxp.feather")
     Kbar = pd.DataFrame(Kbar, index=Z.index, columns=Z.columns).fillna(0)
 
-    # residual Y (net formation of capital)
-    Yr = Ytot - Yg - Yh - Yother - Kbar.groupby(level="region", axis=1).sum()
+    NET = pd.DataFrame(index=Y.index)
+    CFC = pd.DataFrame(index=Y.index)
+
+    for region in Y.stack().columns:
+
+        cfc = Kbar.loc[region].sum(axis=1)  # CFC of region for each one of the 200 sectors
+
+        # where does the CFC come from? We use the same shares as GCF data
+
+        # à comparer avec GCF du pays
+        gcf_all = (
+            Y.stack(level=0)[
+                [
+                    "Changes in inventories",
+                    "Changes in valuables",
+                    "Exports: Total (fob)",
+                    "Gross fixed capital formation",
+                ]
+            ]
+            .sum(axis=1)
+            .unstack()[region]
+            .unstack()
+        )  # lines=regions, columns=sectors of GCF
+
+        gcf_shares = gcf_all.div(gcf_all.sum(), axis=1)  # share of origin region for each sector
+        gcf_shares.loc[region, gcf_shares.isnull().all()] = 1
+        gcf = gcf_all.sum()
+        diff = gcf - cfc
+        NET[region] = gcf_shares.mul(diff, axis=1).stack()
+        CFC[region] = gcf_shares.mul(cfc, axis=1).stack()
+
+    # df["CFC"] = CFC.stack()
+    # df["NCF"] = NET.stack()
+    Yr = NET # residual Y (net formation of capital)
+    # Yr = Ytot - Yg - Yh - Yother - Kbar.groupby(level="region", axis=1).sum()
 
     Ygfcf = Y.swaplevel(axis=1)["Gross fixed capital formation"]
 
@@ -607,9 +596,7 @@ def LY():
     None
     """
 
-    conc = pd.read_excel(
-        "concordance.xlsx", sheet_name="final consumption", index_col=0
-    )
+    conc = pd.read_excel("concordance.xlsx", sheet_name="final consumption", index_col=0)
     conc.index.names = ["sector cons"]
 
     Yh = feather.read_feather("Results/Yh.feather")
@@ -739,14 +726,10 @@ def SLY():
     )
 
     SLY["Energy Carrier Net Total"] = (
-        agg(LY.mul(S.loc["Energy Carrier Net Total"], axis=0), conc_sec_prod)
-        .unstack()
-        .unstack()
+        agg(LY.mul(S.loc["Energy Carrier Net Total"], axis=0), conc_sec_prod).unstack().unstack()
     )
     SLY["Energy Carrier Net LOSS"] = (
-        agg(LY.mul(S.loc["Energy Carrier Net LOSS"], axis=0), conc_sec_prod)
-        .unstack()
-        .unstack()
+        agg(LY.mul(S.loc["Energy Carrier Net LOSS"], axis=0), conc_sec_prod).unstack().unstack()
     )
 
     SLY.columns.names = ["Extensions"]
@@ -772,9 +755,7 @@ def ppp_calculations():
             "ICP/Data_Extract_From_ICP_2017.xlsx",
             index_col=[0, 2, 4],
         )[:-5]
-        .drop(["Country Code", "Classification Code", "Series Code"], axis=1)[
-            "2017 [YR2017]"
-        ]
+        .drop(["Country Code", "Classification Code", "Series Code"], axis=1)["2017 [YR2017]"]
         .unstack(level="Classification Name")
     ).replace({"..": np.nan})
     sector_dict = dict(
@@ -799,20 +780,11 @@ def ppp_calculations():
     )
 
     # real GDP from ICP
-    real = (
-        ICP2017["Expenditure, PPP-based (US$, billions)"]
-        .unstack(level="Series Name")
-        .rename(columns=sector_dict)
-    )
+    real = ICP2017["Expenditure, PPP-based (US$, billions)"].unstack(level="Series Name").rename(columns=sector_dict)
     # aggregation into 49 EXIOBASE regions
     real_agg = rename_region(real, "Country Name").drop("Z - Aggregated categories")
     real_agg["region"] = cc.convert(names=real_agg.index, to="EXIO3")
-    real_agg = (
-        real_agg.reset_index()
-        .set_index(["Country Name", "region"])
-        .groupby(level="region")
-        .sum()
-    )
+    real_agg = real_agg.reset_index().set_index(["Country Name", "region"]).groupby(level="region").sum()
 
     # nominal GDP from ICP
     nominal = (
@@ -821,16 +793,9 @@ def ppp_calculations():
         .rename(columns=sector_dict)
     )
     # aggregation into 49 EXIOBASE regions
-    nominal_agg = rename_region(nominal, "Country Name").drop(
-        "Z - Aggregated categories"
-    )
+    nominal_agg = rename_region(nominal, "Country Name").drop("Z - Aggregated categories")
     nominal_agg["region"] = cc.convert(names=nominal_agg.index, to="EXIO3")
-    nominal_agg = (
-        nominal_agg.reset_index()
-        .set_index(["Country Name", "region"])
-        .groupby(level="region")
-        .sum()
-    )
+    nominal_agg = nominal_agg.reset_index().set_index(["Country Name", "region"]).groupby(level="region").sum()
 
     # relative price index, calculated to use it on EXIOBASE economic data
     index = nominal_agg / real_agg
@@ -856,11 +821,7 @@ def ppp_calculations():
         .groupby(level="region", axis=1)
         .sum()
     )
-    Yg = (
-        Y.swaplevel(axis=1)["Final consumption expenditure by government"]
-        .groupby(level="region", axis=1)
-        .sum()
-    )
+    Yg = Y.swaplevel(axis=1)["Final consumption expenditure by government"].groupby(level="region", axis=1).sum()
     Ygfcf = Y.swaplevel(axis=1)["Gross fixed capital formation"]
 
     # EXIOBASE data from euros to dollars
@@ -869,9 +830,7 @@ def ppp_calculations():
     Ygfcf_dollars = Ygfcf / XReuros.loc[2017]
 
     # Aggregation of data to COICOP sectors
-    conc = pd.read_excel(
-        "concordance.xlsx", sheet_name="final consumption", index_col=[0]
-    )
+    conc = pd.read_excel("concordance.xlsx", sheet_name="final consumption", index_col=[0])
     conc_cap = pd.read_excel("concordance.xlsx", sheet_name="capital", index_col=[0, 1])
     Yh_dollars_coicop = agg(Yh_dollars.groupby(level="sector").sum(), conc)
     Yg_dollars_coicop = agg(Yg_dollars.groupby(level="sector").sum(), conc)
@@ -922,22 +881,12 @@ def ppp_calculations():
 def energy():
     SLY = feather.read_feather("Results/SLY.feather")
     SLY_pri = SLY["Energy Carrier Net Total"].unstack(level=0)
-    SLY_fin = (
-        SLY["Energy Carrier Net Total"] - SLY["Energy Carrier Net LOSS"]
-    ).unstack(level=0)
+    SLY_fin = (SLY["Energy Carrier Net Total"] - SLY["Energy Carrier Net LOSS"]).unstack(level=0)
     E_K_fc_fin = (
-        SLY_fin[["LkYh", "LkYg"]]
-        .sum(axis=1)
-        .unstack(level=["region cons"])
-        .groupby(level="sector cons")
-        .sum()
+        SLY_fin[["LkYh", "LkYg"]].sum(axis=1).unstack(level=["region cons"]).groupby(level="sector cons").sum()
     ).drop(sect_cap)
     E_K_fc_pri = (
-        SLY_pri[["LkYh", "LkYg"]]
-        .sum(axis=1)
-        .unstack(level=["region cons"])
-        .groupby(level="sector cons")
-        .sum()
+        SLY_pri[["LkYh", "LkYg"]].sum(axis=1).unstack(level=["region cons"]).groupby(level="sector cons").sum()
     ).drop(sect_cap)
 
     F_hh = pd.read_csv(
@@ -949,9 +898,7 @@ def energy():
     F_hh.columns.names = ["region prod", "sector prod"]
     E_hhpri = F_hh.loc["Energy Carrier Net Total"].groupby(level="region prod").sum()
     E_hhfin = (
-        (F_hh.loc["Energy Carrier Net Total"] - F_hh.loc["Energy Carrier Net LOSS"])
-        .groupby(level="region prod")
-        .sum()
+        (F_hh.loc["Energy Carrier Net Total"] - F_hh.loc["Energy Carrier Net LOSS"]).groupby(level="region prod").sum()
     )
 
     D_pba = pd.read_csv(
@@ -1000,14 +947,8 @@ def energy():
 def validation():
     SLY = feather.read_feather("Results/SLY.feather")
     a = (
-        SLY.sum(axis=1)
-        .unstack(level="LY name")[["LYg", "LYgfcf", "LYh", "LYother"]]
-        .sum()
-        .sum()
-        / SLY.sum(axis=1)
-        .unstack(level="LY name")[["LkYg", "LkYh", "LkYother", "LkYr"]]
-        .sum()
-        .sum()
+        SLY.sum(axis=1).unstack(level="LY name")[["LYg", "LYgfcf", "LYh", "LYother"]].sum().sum()
+        / SLY.sum(axis=1).unstack(level="LY name")[["LkYg", "LkYh", "LkYother", "LkYr"]].sum().sum()
     )
     return a - 1
 
@@ -1038,9 +979,7 @@ def data_figure1():
 
     CFC = (
         rename_region(
-            pd.read_excel("World Bank/CFC worldbank.xlsx", header=3, index_col=[0])[
-                "2017"
-            ],
+            pd.read_excel("World Bank/CFC worldbank.xlsx", header=3, index_col=[0])["2017"],
             "Country Name",
         )
         .drop("Z - Aggregated categories")
@@ -1048,9 +987,7 @@ def data_figure1():
     )
     GFCF = (
         rename_region(
-            pd.read_excel("World Bank/GFCF worldbank.xlsx", header=3, index_col=[0])[
-                "2017"
-            ],
+            pd.read_excel("World Bank/GFCF worldbank.xlsx", header=3, index_col=[0])["2017"],
             "Country Name",
         )
         .drop("Z - Aggregated categories")
@@ -1074,20 +1011,11 @@ def data_figure1():
     ).T.to_excel("Figures/figure1.xlsx")
 
 
-def data_figure2(
-    E_hhfin, pop_agg, E_K_fc_fin, E_pbafin, E_cbafin, real_gdp_cap, fc_cap
-):
+def data_figure2(E_hhfin, pop_agg, E_K_fc_fin, E_pbafin, E_cbafin, real_gdp_cap, fc_cap):
     SLY = feather.read_feather("Results/SLY.feather")
-    SLY_fin = (
-        SLY["Energy Carrier Net Total"] - SLY["Energy Carrier Net LOSS"]
-    ).unstack(level=0)
-    E_K_fc_other = (
-        SLY_fin[["LYh", "LYg"]].sum(axis=1).unstack(level=["region cons"]).sum()
-    )
-    E_K_fc_capital = (
-        SLY_fin[["LkYh", "LkYg"]].sum(axis=1).unstack(level=["region cons"]).sum()
-        - E_K_fc_other
-    )
+    SLY_fin = (SLY["Energy Carrier Net Total"] - SLY["Energy Carrier Net LOSS"]).unstack(level=0)
+    E_K_fc_other = SLY_fin[["LYh", "LYg"]].sum(axis=1).unstack(level=["region cons"]).sum()
+    E_K_fc_capital = SLY_fin[["LkYh", "LkYg"]].sum(axis=1).unstack(level=["region cons"]).sum() - E_K_fc_other
 
     pd.concat(
         [
@@ -1118,13 +1046,9 @@ def data_figure3(real_gdp_cap, E_hhfin, pop_agg, E_cbafin):
 
     x = np.log(real_gdp_cap)
     y = np.log(E_hhfin / pop_agg * 1000)
-    pd.concat(
-        [x, y],
-        axis=1,
-        keys=["log(GDP per capita (2017US\$ ppp))", "log($E_{hh}$(GJ/cap))"],
-    ).sort_values(by="log(GDP per capita (2017US\$ ppp))").to_excel(
-        "Figures/figure3.xlsx", sheet_name="Fig. 3a"
-    )
+    pd.concat([x, y], axis=1, keys=["log(GDP per capita (2017US\$ ppp))", "log($E_{hh}$(GJ/cap))"],).sort_values(
+        by="log(GDP per capita (2017US\$ ppp))"
+    ).to_excel("Figures/figure3.xlsx", sheet_name="Fig. 3a")
     regression = scipy.stats.linregress(x, y)
     with pd.ExcelWriter("Figures/figure3.xlsx", mode="a") as writer:
         pd.DataFrame(
@@ -1135,13 +1059,9 @@ def data_figure3(real_gdp_cap, E_hhfin, pop_agg, E_cbafin):
     y = E_hhfin / (E_cbafin + E_hhfin) * 100
     regression = scipy.stats.linregress(x, y)
     with pd.ExcelWriter("Figures/figure3.xlsx", mode="a") as writer:
-        pd.concat(
-            [x, y],
-            axis=1,
-            keys=["log(GDP per capita (2017US\$ ppp))", "Share (\%)"],
-        ).sort_values(by="log(GDP per capita (2017US\$ ppp))").to_excel(
-            writer, sheet_name="Fig. 3b"
-        )
+        pd.concat([x, y], axis=1, keys=["log(GDP per capita (2017US\$ ppp))", "Share (\%)"],).sort_values(
+            by="log(GDP per capita (2017US\$ ppp))"
+        ).to_excel(writer, sheet_name="Fig. 3b")
         pd.DataFrame(
             list(regression),
             index=["slope", "intercept", "rvalue", "pvalue", "stderr"],
@@ -1152,13 +1072,9 @@ def data_figure3(real_gdp_cap, E_hhfin, pop_agg, E_cbafin):
 def data_figure4(real_gdp_cap, E_pbafin, E_hhfin, ICP_data_real, E_K_fc_fin, Y_real):
     x = real_gdp_cap / 1000
     y = (E_pbafin + E_hhfin) / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"] / 1000
-    pd.concat(
-        [x, y],
-        axis=1,
-        keys=["GDP per capita (2017US\$ ppp)", "$I_{pba}$ (MJ/2017US\$ppp)"],
-    ).sort_values(by="GDP per capita (2017US\$ ppp)").to_excel(
-        "Figures/figure4.xlsx", sheet_name="Fig. 4a"
-    )
+    pd.concat([x, y], axis=1, keys=["GDP per capita (2017US\$ ppp)", "$I_{pba}$ (MJ/2017US\$ppp)"],).sort_values(
+        by="GDP per capita (2017US\$ ppp)"
+    ).to_excel("Figures/figure4.xlsx", sheet_name="Fig. 4a")
     regression = scipy.stats.linregress(x, y)
     with pd.ExcelWriter("Figures/figure4.xlsx", mode="a") as writer:
         pd.DataFrame(
@@ -1168,27 +1084,16 @@ def data_figure4(real_gdp_cap, E_pbafin, E_hhfin, ICP_data_real, E_K_fc_fin, Y_r
         ).to_excel(writer, sheet_name="Fig. 4a regression")
         #
         pd.DataFrame(
-            np.log(
-                y
-                / (
-                    (E_pbafin + E_hhfin).sum()
-                    / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"].sum()
-                    / 1000
-                )
-            ),
+            np.log(y / ((E_pbafin + E_hhfin).sum() / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"].sum() / 1000)),
             columns=["$I_{pba}$ log difference to world mean"],
         ).to_excel(writer, sheet_name="Fig. 4d")
 
     y = E_K_fc_fin.sum() / Y_real.T.drop(sect_cap, axis=1).sum(axis=1)
     regression = scipy.stats.linregress(x, y)
     with pd.ExcelWriter("Figures/figure4.xlsx", mode="a") as writer:
-        pd.concat(
-            [x, y],
-            axis=1,
-            keys=["GDP per capita (2017US\$ ppp)", "$I^K_{fc}$ (MJ/2017US\$ppp)"],
-        ).sort_values(by="GDP per capita (2017US\$ ppp)").to_excel(
-            writer, sheet_name="Fig. 4c"
-        )
+        pd.concat([x, y], axis=1, keys=["GDP per capita (2017US\$ ppp)", "$I^K_{fc}$ (MJ/2017US\$ppp)"],).sort_values(
+            by="GDP per capita (2017US\$ ppp)"
+        ).to_excel(writer, sheet_name="Fig. 4c")
         pd.DataFrame(
             list(regression),
             index=["slope", "intercept", "rvalue", "pvalue", "stderr"],
@@ -1197,24 +1102,15 @@ def data_figure4(real_gdp_cap, E_pbafin, E_hhfin, ICP_data_real, E_K_fc_fin, Y_r
 
         pd.DataFrame(  # world values
             [
-                (E_pbafin + E_hhfin).sum()
-                / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"].sum()
-                / 1000,
-                E_K_fc_fin.sum(axis=1).sum()
-                / Y_real.T.drop(sect_cap, axis=1).sum(axis=1).sum(),
+                (E_pbafin + E_hhfin).sum() / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"].sum() / 1000,
+                E_K_fc_fin.sum(axis=1).sum() / Y_real.T.drop(sect_cap, axis=1).sum(axis=1).sum(),
             ],
             index=["$I_{pba}$", "$I^K_{fc}$"],
             columns=["world values"],
         ).to_excel(writer, sheet_name="World values")
 
         pd.DataFrame(
-            np.log(
-                y
-                / (
-                    E_K_fc_fin.sum().sum()
-                    / Y_real.T.drop(sect_cap, axis=1).sum(axis=1).sum()
-                )
-            ),
+            np.log(y / (E_K_fc_fin.sum().sum() / Y_real.T.drop(sect_cap, axis=1).sum(axis=1).sum())),
             columns=["$I^K_{fc}$ log difference to world mean"],
         ).to_excel(writer, sheet_name="Fig. 4e")
 
@@ -1241,11 +1137,7 @@ def data_figure4(real_gdp_cap, E_pbafin, E_hhfin, ICP_data_real, E_K_fc_fin, Y_r
             columns=["elasticity E_K_fc"],
         ).to_excel(writer, sheet_name="elasticity E_K_fc")
 
-        y = (
-            (E_pbafin + E_hhfin)
-            / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"]
-            / 1000
-        )
+        y = (E_pbafin + E_hhfin) / ICP_data_real["1000000:GROSS DOMESTIC PRODUCT"] / 1000
         regression = scipy.stats.linregress(np.log(x), np.log(y))
         pd.DataFrame(
             list(regression),
@@ -1258,18 +1150,14 @@ def data_figure5(E_K_fc_fin, Y_real, real_gdp_cap):
     I_K_fc = E_K_fc_fin.T.div(Y_real.T.drop(sect_cap, axis=1))
     I_K_fc_world = E_K_fc_fin.sum(axis=1) / Y_real.T.drop(sect_cap, axis=1).sum()
     x = real_gdp_cap / 1000
-    regression_results = pd.DataFrame(
-        [], index=["slope", "intercept", "rvalue", "pvalue", "stderr"]
-    )
+    regression_results = pd.DataFrame([], index=["slope", "intercept", "rvalue", "pvalue", "stderr"])
     log_diff = pd.DataFrame([], index=I_K_fc.index, columns=I_K_fc.columns)
     for i in I_K_fc.columns:
         y = I_K_fc[i]
         regression = scipy.stats.linregress(x, y)
         regression_results[i] = list(regression)
         log_diff[i] = np.log(I_K_fc[i] / I_K_fc_world.loc[i])
-    regression_results.loc["R2"] = (
-        regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
-    )
+    regression_results.loc["R2"] = regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
     I_K_fc.to_excel("Figures/figure5.xlsx", sheet_name="I_K_fc")
     with pd.ExcelWriter("Figures/figure5.xlsx", mode="a") as writer:
         I_K_fc_world.to_excel(writer, sheet_name="I_K_fc_world")
@@ -1281,17 +1169,13 @@ def data_figure5(E_K_fc_fin, Y_real, real_gdp_cap):
 def data_figure6(Y_real, real_gdp_cap):
     sect_shares = Y_real.drop(sect_cap).div(Y_real.drop(sect_cap).sum(), axis=1).T
     x = (real_gdp_cap) / 1000
-    regression_results = pd.DataFrame(
-        [], index=["slope", "intercept", "rvalue", "pvalue", "stderr"]
-    )
+    regression_results = pd.DataFrame([], index=["slope", "intercept", "rvalue", "pvalue", "stderr"])
 
     for i in sect_shares.columns:
         y = sect_shares[i]
         regression = scipy.stats.linregress(x, y)
         regression_results[i] = list(regression)
-    regression_results.loc["R2"] = (
-        regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
-    )
+    regression_results.loc["R2"] = regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
     sect_shares["real gdp cap"] = x
     sect_shares.to_excel("Figures/figure6.xlsx", sheet_name="sector shares")
     with pd.ExcelWriter("Figures/figure6.xlsx", mode="a") as writer:
@@ -1306,16 +1190,12 @@ def data_figure7(real_gdp_cap, E_K_fc_fin, Y_real, E_hhfin, pop_agg):
     y = E_hhfin / pop_agg
     regression_hh = scipy.stats.linregress(np.log(x), np.log(y))
     y = ((E_hhfin + E_K_fc_fin.sum()) / pop_agg) * 1000000
-    ycalc = (regression_fd[1] + regression_fd[0] * x) * Y_real.T.drop(
-        sect_cap, axis=1
-    ).sum(axis=1) * 1000000 / pop_agg + np.exp(
-        regression_hh[1] + regression_hh[0] * np.log(x)
-    ) * 1000000
-    pd.concat(
-        [x, y, ycalc],
-        axis=1,
-        keys=["real_gdp_cap", "GJ/capita", "GJ/capita calculated"],
-    ).sort_values(by="real_gdp_cap").to_excel("Figures/figure7.xlsx")
+    ycalc = (regression_fd[1] + regression_fd[0] * x) * Y_real.T.drop(sect_cap, axis=1).sum(
+        axis=1
+    ) * 1000000 / pop_agg + np.exp(regression_hh[1] + regression_hh[0] * np.log(x)) * 1000000
+    pd.concat([x, y, ycalc], axis=1, keys=["real_gdp_cap", "GJ/capita", "GJ/capita calculated"],).sort_values(
+        by="real_gdp_cap"
+    ).to_excel("Figures/figure7.xlsx")
 
 
 def data_figure8(real_gdp_cap, E_K_fc_fin, Y_real, E_hhfin, pop_agg):
@@ -1383,9 +1263,9 @@ def data_figure8(real_gdp_cap, E_K_fc_fin, Y_real, E_hhfin, pop_agg):
     y = E_hhfin * 1000000 / pop_agg  # MJ/cap
     regression_hh = scipy.stats.linregress(np.log(x), np.log(y))
 
-    y = (Y_real.T.drop(sect_cap, axis=1).sum(axis=1) / pop_agg * 1000000) * (
-        0.01 * b + 0.0201 * real_gdp_cap * a
-    ) + (E_hhfin * 1000000 / pop_agg) * (pow(1.01, regression_hh[0]) - 1)
+    y = (Y_real.T.drop(sect_cap, axis=1).sum(axis=1) / pop_agg * 1000000) * (0.01 * b + 0.0201 * real_gdp_cap * a) + (
+        E_hhfin * 1000000 / pop_agg
+    ) * (pow(1.01, regression_hh[0]) - 1)
 
     data = pd.concat([x, y], keys=["gdp", "delta"], axis=1).sort_values(by="gdp")
     data.rename(index=long_exio_regions).to_excel("Figures/figure8.xlsx")
@@ -1394,14 +1274,10 @@ def data_figure8(real_gdp_cap, E_K_fc_fin, Y_real, E_hhfin, pop_agg):
 def data_table1(E_K_fc_fin, Y_real, real_gdp_cap):
     I_K_fc = E_K_fc_fin.T.div(Y_real.T.drop(sect_cap, axis=1))
     I_K_fc_world = E_K_fc_fin.sum(axis=1) / Y_real.T.drop(sect_cap, axis=1).sum()
-    I_K_fc_world_total = (
-        E_K_fc_fin.sum().sum() / Y_real.T.drop(sect_cap, axis=1).sum().sum()
-    )
+    I_K_fc_world_total = E_K_fc_fin.sum().sum() / Y_real.T.drop(sect_cap, axis=1).sum().sum()
 
     sect_shares = Y_real.drop(sect_cap).div(Y_real.drop(sect_cap).sum(), axis=1)
-    sect_shares_world = (
-        Y_real.drop(sect_cap).sum(axis=1).div(Y_real.drop(sect_cap).sum(axis=1).sum())
-    )
+    sect_shares_world = Y_real.drop(sect_cap).sum(axis=1).div(Y_real.drop(sect_cap).sum(axis=1).sum())
 
     # theta
 
@@ -1449,16 +1325,11 @@ def data_table1(E_K_fc_fin, Y_real, real_gdp_cap):
         regression = scipy.stats.linregress(x, y)
         df_I["$\epsilon_{sect}^{I}$"].loc[sect] = round(regression[0], 2)
         df_I["$\eta_{sect}^{I}$"].loc[sect] = round(
-            sect_shares_world.loc[sect]
-            * regression[0]
-            * I_K_fc_world.loc[sect]
-            / I_K_fc_world_total,
+            sect_shares_world.loc[sect] * regression[0] * I_K_fc_world.loc[sect] / I_K_fc_world_total,
             2,
         )
 
-    df = pd.concat(
-        [df_I, df_theta], keys=[r"$I_{sect}^{K}$", "$\\theta_{sect}$"], axis=1
-    )
+    df = pd.concat([df_I, df_theta], keys=[r"$I_{sect}^{K}$", "$\\theta_{sect}$"], axis=1)
     df.to_excel("Figures/tab1.xlsx")
 
 
@@ -1468,9 +1339,7 @@ def data_table1(E_K_fc_fin, Y_real, real_gdp_cap):
 # the regression of a sub sector's share of expenditures in the CPI sector total as a function of GDP
 # it saves an excel with the coefficients of regressions and the shares
 def supplementary_data_theta(real_gdp_cap, index, Yh_dollars, Yg_dollars):
-    conc = pd.read_excel(
-        "concordance.xlsx", sheet_name="final consumption", index_col=0
-    )
+    conc = pd.read_excel("concordance.xlsx", sheet_name="final consumption", index_col=0)
     sector_dict = dict(
         {
             "1101000:FOOD AND NON-ALCOHOLIC BEVERAGES": "CPI: 01 - Food and non-Alcoholic beverages",
@@ -1497,9 +1366,7 @@ def supplementary_data_theta(real_gdp_cap, index, Yh_dollars, Yg_dollars):
     shares = pd.DataFrame()
 
     for sect in conc.columns:
-        regression_results = pd.DataFrame(
-            [], index=["slope", "intercept", "rvalue", "pvalue", "stderr"]
-        )
+        regression_results = pd.DataFrame([], index=["slope", "intercept", "rvalue", "pvalue", "stderr"])
         df = (
             (Yh_dollars + Yg_dollars)
             .groupby(level="sector")
@@ -1518,9 +1385,7 @@ def supplementary_data_theta(real_gdp_cap, index, Yh_dollars, Yg_dollars):
             y = (y * y / y).dropna()
             regression = scipy.stats.linregress(x2, y)
             regression_results[sector] = list(regression)
-        regression_results.loc["R2"] = (
-            regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
-        )
+        regression_results.loc["R2"] = regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
         regression_results2 = pd.DataFrame()
         regression_results2[sect] = regression_results.stack()
 
@@ -1540,9 +1405,7 @@ def supplementary_data_theta(real_gdp_cap, index, Yh_dollars, Yg_dollars):
 # the regression of a sub sector's senergy intensity as a function of GDP
 # it saves an excel with the coefficients of regressions and the shares
 def supplementary_data_I(real_gdp_cap, index, Yh_dollars, Yg_dollars, Yh, Yg):
-    conc = pd.read_excel(
-        "concordance.xlsx", sheet_name="final consumption", index_col=0
-    )
+    conc = pd.read_excel("concordance.xlsx", sheet_name="final consumption", index_col=0)
     sector_dict = dict(
         {
             "1101000:FOOD AND NON-ALCOHOLIC BEVERAGES": "CPI: 01 - Food and non-Alcoholic beverages",
@@ -1576,9 +1439,7 @@ def supplementary_data_I(real_gdp_cap, index, Yh_dollars, Yg_dollars, Yh, Yg):
     )
 
     for sect in conc.columns:
-        regression_results = pd.DataFrame(
-            [], index=["slope", "intercept", "rvalue", "pvalue", "stderr"]
-        )
+        regression_results = pd.DataFrame([], index=["slope", "intercept", "rvalue", "pvalue", "stderr"])
         df = (
             (Yh_dollars + Yg_dollars)
             .groupby(level="sector")
@@ -1591,12 +1452,8 @@ def supplementary_data_I(real_gdp_cap, index, Yh_dollars, Yg_dollars, Yh, Yg):
         share = pd.DataFrame()
         share[sect] = df2.sum(axis=1) / df2.sum().sum()
 
-        SL = Lk.mul(
-            S.loc["Energy Carrier Net Total"] - S.loc["Energy Carrier Net LOSS"], axis=0
-        ).sum()
-        MJ = SL.unstack().T.mul(
-            (Yh + Yg).groupby(level="sector").sum().mul(conc[sect], axis=0)
-        )
+        SL = Lk.mul(S.loc["Energy Carrier Net Total"] - S.loc["Energy Carrier Net LOSS"], axis=0).sum()
+        MJ = SL.unstack().T.mul((Yh + Yg).groupby(level="sector").sum().mul(conc[sect], axis=0))
         I = MJ / df  # .dropna()
         I = I.loc[(I != 0).any(1)]
 
@@ -1607,9 +1464,7 @@ def supplementary_data_I(real_gdp_cap, index, Yh_dollars, Yg_dollars, Yh, Yg):
             if x2.size != 0:
                 regression = scipy.stats.linregress(x2, y)
                 regression_results[sector] = list(regression)
-        regression_results.loc["R2"] = (
-            regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
-        )
+        regression_results.loc["R2"] = regression_results.loc["rvalue"] * regression_results.loc["rvalue"]
         regression_results2 = pd.DataFrame()
         regression_results2[sect] = regression_results.stack()
 
